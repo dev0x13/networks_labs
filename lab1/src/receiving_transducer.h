@@ -1,30 +1,21 @@
 #pragma once
 
-#include "primitive_transducers.h"
-
-#include <iostream>
-#include <list>
+#include "one_way_transducer.h"
 
 template <ARQProtocol protocol>
 class ReceivingTransducer {
 public:
     ReceivingTransducer(const std::string& mqID, float lossProbability_):
+        ack(mqID + "_ack"),
+        receiver(mqID + "_receive"),
         lossProbability(lossProbability_)
     {
-        ack      = new Sender(mqID + "_ack");
-        receiver = new Receiver(mqID + "_receive");
-
         incoming.resize(1);
 
         receiveJob();
     }
 
-    ~ReceivingTransducer() {
-        delete ack;
-        delete receiver;
-    }
-
-    std::vector<uint8_t> getResult() {
+    std::vector<uint8_t> getResult() const {
         std::vector<uint8_t> res;
 
         for (const auto& m : incoming) {
@@ -40,27 +31,22 @@ private:
             {
                 Message message;
 
-                if (!receiver->receive(message)) {
-                    continue;
-                }
-
-                if (!message.isValid()) {
+                if (!receiver.transduce(message) ||
+                    !message.isValid() ||
+                    (protocol == ARQProtocol::GBN && message.seqNum != numSeqExpected))
+                {
                     continue;
                 }
 
                 if (getRandomFloat() < lossProbability) {
-                    std::cout << "Lost: " << message << " from `" << receiver->getMQName() << "`" <<std::endl;
+                    std::cout << "Lost: " << message << " from `" << receiver.getMQName() << "`" <<std::endl;
                     continue;
                 }
 
-                if (protocol == ARQProtocol::GBN && message.seqNum != numSeqExpected) {
-                    continue;
-                }
+                if (ack.transduce(message)) {
+                    std::cout << "Received: " << message << " from `" << receiver.getMQName() << "`" <<std::endl;
 
-                if (ack->send(message)) {
-                    std::cout << "Received: " << message << " from `" << receiver->getMQName() << "`" <<std::endl;
-
-                    if (message.seqNum >= incoming.size()) {
+                    if ((size_t) message.seqNum >= incoming.size()) {
                         incoming.resize(message.seqNum + 1);
                     }
 
@@ -81,10 +67,15 @@ private:
         return dis(e);
     }
 
-    Sender* ack{ nullptr };
-    Receiver* receiver{ nullptr };
+private:
+    OneWayTransducer<SENDING>   ack;
+    OneWayTransducer<RECEIVING> receiver;
 
+    // Received messages
     std::vector<Message> incoming;
+
+    // For GBN
     int64_t numSeqExpected = 0;
+
     const float lossProbability;
 };
