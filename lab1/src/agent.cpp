@@ -62,6 +62,7 @@ int main(int argc, char* argv[]) {
             }
 
             SendingTransducer<GBN> t(mqID, windowSize, ackTimeoutMs, reinterpret_cast<const uint8_t *>(dataToSend.data()), dataToSend.size());
+            std::cout << t.getStats() << "\n";
         } else if (arqProtocol == "SR") {
             if (*res.first != SR) {
                 std::cout << "Invalid ARQ protocol\n";
@@ -69,6 +70,7 @@ int main(int argc, char* argv[]) {
             }
 
             SendingTransducer<SR> t(mqID, windowSize, ackTimeoutMs, reinterpret_cast<const uint8_t *>(dataToSend.data()), dataToSend.size());
+            std::cout << t.getStats() << "\n";
         } else {
             std::cout << "Invalid ARQ protocol\n";
             return 1;
