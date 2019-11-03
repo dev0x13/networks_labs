@@ -213,12 +213,24 @@ class DesignatedRouter {
 public:
     DesignatedRouter(const std::vector<NodeIndex>& neighbours) {
         for (const auto& n : neighbours) {
-            // BUG!!!
-            lsaReceive.emplace_back("DR_" + n + "_receive");
-            lsaBroadcast.emplace_back("DR_" + n + "_send");
+            auto receiveCh = new OneWayTransducer<TransducerMode::RECEIVING>("DR_" + n + "_receive");
+            lsaReceive.push_back(receiveCh);
+
+            auto sendCh = new OneWayTransducer<TransducerMode::SENDING>("DR_" + n + "_send");
+            lsaBroadcast.push_back(sendCh);
         }
 
         lsaReceiveJob();
+    }
+
+    ~DesignatedRouter() {
+        for (auto &ch : lsaReceive) {
+            delete ch;
+        }
+
+        for (auto &ch : lsaBroadcast) {
+            delete ch;
+        }
     }
 
     void lsaReceiveJob() {
@@ -226,8 +238,8 @@ public:
 
         while (lastTopologyRebuiltCount < completeTopologyCriterion) {
             for (auto& ch : lsaReceive) {
-                if (ch.receive(serializedLsa)) {
-                    std::cout << "Received LSA from " << ch.getMQName() << std::endl;
+                if (ch->receive(serializedLsa)) {
+                    std::cout << "Received LSA from " << ch->getMQName() << std::endl;
 
                     std::stringstream ss;
                     ss << serializedLsa;
@@ -251,7 +263,7 @@ public:
         const std::string serializedLsa = ss.str();
 
         for (auto& ch : lsaBroadcast) {
-            ch.send(serializedLsa);
+            ch->send(serializedLsa);
         }
     }
 
@@ -259,6 +271,6 @@ private:
     static const constexpr size_t completeTopologyCriterion = 100;
     size_t lastTopologyRebuiltCount = 0;
     Topology knownTopology;
-    std::vector<OneWayTransducer<TransducerMode::RECEIVING>> lsaReceive;
-    std::vector<OneWayTransducer<TransducerMode::SENDING>> lsaBroadcast;
+    std::vector<OneWayTransducer<TransducerMode::RECEIVING>*> lsaReceive;
+    std::vector<OneWayTransducer<TransducerMode::SENDING>*> lsaBroadcast;
 };
