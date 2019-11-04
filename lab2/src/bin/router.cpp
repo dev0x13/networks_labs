@@ -4,7 +4,8 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
-#include "router.h"
+#include "../common_router.h"
+#include "../designated_router.h"
 
 namespace pt = boost::property_tree;
 
@@ -21,8 +22,10 @@ int main(int argc, char* argv[]) {
     pt::ptree ptree;
     pt::read_json(argv[2], ptree);
 
+    // 2. Create router
+
     if (!isDesignatedRouter) {
-        std::unordered_map<NodeIndex, Cost> neighbours;
+        std::unordered_map<NodeIndex, Cost> neighbours{};
 
         for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
             neighbours[neighbour.first] = neighbour.second.get_value<Cost>();
