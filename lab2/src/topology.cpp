@@ -39,47 +39,6 @@ bool Topology::saveToDot(const std::string& filePath) const {
     return true;
 }
 
-void Topology::serialize(std::ostream& os) const {
-    os << graph.size() << std::endl;
-
-    for (const auto& node : graph) {
-        os << node.first << std::endl;
-        os << node.second.size() << std::endl;
-
-        for (const auto& cost : node.second) {
-            os << cost.first << std::endl;
-            os << cost.second << std::endl;
-        }
-    }
-}
-
-Topology Topology::deserialize(std::istream& is) {
-    Topology topology;
-
-    size_t numNodes = 0;
-    is >> numNodes;
-
-    for (size_t i = 0; i < numNodes; ++i) {
-        std::string nodeIndex;
-        size_t nodeNumEdges;
-
-        is >> nodeIndex;
-        is >> nodeNumEdges;
-
-        for (size_t j = 0; j < nodeNumEdges; ++j) {
-            std::string secondNodeIndex;
-            Cost edgeCost;
-
-            is >> secondNodeIndex;
-            is >> edgeCost;
-
-            topology.graph[nodeIndex][secondNodeIndex] = edgeCost;
-        }
-    }
-
-    return topology;
-}
-
 Topology::ShortestPaths Topology::getShortestPaths(const NodeIndex& src) const {
     assert(graph.count(src) != 0);
 

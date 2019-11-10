@@ -48,6 +48,57 @@ struct Path {
         : lastNodeBeforeDest(lastNodeBeforeDest_), totalCost(totalCost_) {}
 };
 
+/* Topology operation class. Used to distribute
+ * topology changes all over the network. */
+struct TopologyOperation {
+    enum ChangeType {
+        CONNECTION_ADD,
+        CONNECTION_REMOVE,
+        UNDEFINED
+    };
+
+    TopologyOperation(const NodeIndex& node1_, const NodeIndex& node2_)
+            : node1(node1_), node2(node2_), cost(-1), changeType(CONNECTION_REMOVE) {}
+
+    TopologyOperation(const NodeIndex& node1_, const NodeIndex& node2_, const Cost& cost_)
+            : node1(node1_), node2(node2_), cost(cost_), changeType(CONNECTION_ADD) {}
+
+    TopologyOperation() : node1(""), node2(""), cost(-1) {}
+
+    bool isValid() const {
+        return !node1.empty() && !node2.empty() && !(cost == -1 && changeType == CONNECTION_ADD) && changeType != UNDEFINED;
+    }
+
+    // Serializes topology operation to a stream
+    void serialize(std::ostream& os) const {
+        os << node1 << std::endl;
+        os << node2 << std::endl;;
+        os << cost << std::endl;;
+    }
+
+    // Deserializes topology operation from a stream
+    static TopologyOperation deserialize(std::istream& is) {
+        NodeIndex node1;
+        NodeIndex node2;
+        Cost cost;
+
+        is >> node1;
+        is >> node2;
+        is >> cost;
+
+        if (cost == -1) {
+            return {node1, node2};
+        } else {
+            return {node1, node2, cost};
+        }
+    }
+
+    const NodeIndex node1;
+    const NodeIndex node2;
+    const Cost cost;
+    const ChangeType changeType{ UNDEFINED };
+};
+
 /*
  * This is a network topology structure, which utilizes graph to
  * store routers and connections. It is not efficient in any sense
@@ -64,72 +115,50 @@ public:
             SymmetricPairComparator
         >;
 
-    bool operator==(const Topology& other) const {
-        if (other.graph.size() != graph.size()) {
-            return false;
-        }
-
-        for (const auto& e: graph) {
-            if (other.graph.count(e.first) == 0) {
-                return false;
-            }
-
-            if (e.second.size() != other.graph.at(e.first).size()) {
-                return false;
-            }
-
-            if (!std::equal(
-                    e.second.begin(),
-                    e.second.end(),
-                    other.graph.at(e.first).begin()))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // Merges two topologies with replace conflict resolution.
-    void merge(const Topology& other) {
-        for (const auto& node: other.graph) {
-            graph[node.first] = node.second;
-        }
-    }
-
     // Adds connection to topology. Returns true if topology was updated and false if
     // there was such connection in topology before.
     bool addConnection(const NodeIndex& n1, const NodeIndex& n2, const Cost& cost) {
-        if (graph.count(n1) != 0 && graph[n1].count(n2) != 0) {
-            return false;
-        }
+        const bool res = !isConnected(n1, n2);
 
         graph[n1][n2] = cost;
         graph[n2][n1] = cost;
 
-        return true;
+        return res;
     }
 
     bool isConnected(const NodeIndex& n1, const NodeIndex& n2) const {
         return graph.count(n1) != 0 && graph.at(n1).count(n2) != 0;
     }
 
-    void removeConnection(const NodeIndex& n1, const NodeIndex& n2) {
+    bool removeConnection(const NodeIndex& n1, const NodeIndex& n2) {
         assert(graph.count(n1) != 0);
         assert(graph.count(n2) != 0);
 
+        const bool res = !isConnected(n1, n2);
+
         graph[n1].erase(n2);
         graph[n2].erase(n1);
+
+        return res;
+    }
+
+    bool applyOperation(const TopologyOperation& op) {
+        if (!op.isValid()) {
+            return false;
+        }
+
+        switch (op.changeType) {
+            case TopologyOperation::CONNECTION_ADD:
+                return addConnection(op.node1, op.node2, op.cost);
+            case TopologyOperation::CONNECTION_REMOVE:
+                return removeConnection(op.node1, op.node2);
+            default:
+                return false;
+        }
     }
 
     // Save topology graph to DOT file, which can be visualized with GraphViz
     bool saveToDot(const std::string& filePath) const;
-
-    // Serializes topology graph to a stream
-    void serialize(std::ostream& os) const;
-
-    // Deserializes topology graph from a stream
-    static Topology deserialize(std::istream& is);
 
     // Returns shortest paths from the given node to the others.
     // Utilizes Dijkstra algorithm. Again, this implementation

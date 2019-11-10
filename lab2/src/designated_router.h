@@ -21,11 +21,11 @@ public:
         }
     }
 
-    // Handles LSA received from common routers
-    void lsaReceiveJob();
+    // Handles topology changes received from common routers
+    void receiveOperationJob();
 
-    // Broadcast LSA to common routers
-    void broadcastLsa();
+    // Broadcast topology changes to common routers
+    void broadcastOperation(const TopologyOperation& op);
 
 private:
     static const constexpr int64_t waitForLsaMs = 5000;

@@ -29,15 +29,15 @@ public:
     // neighbours.
     void pingJob();
 
-    // Serializes known topology (aka LSA) and send it to DR
-    void sendLsaToDr() {
+    // Serializes a topology operation and send it to DR
+    void sendOperationToDr(const TopologyOperation& op) {
         std::stringstream ss;
-        knownTopology.serialize(ss);
+        op.serialize(ss);
         lsaSend.send(ss.str());
     }
 
-    // Repetitive job, handles LSA receved from DR.
-    void receiveLsaFromDrJob();
+    // Repetitive job, handles topology changes received from DR.
+    void receiveOperationJob();
 private:
     // Timeouts ans intervals
     const int64_t noNeighboursTimeoutMs = 5000;

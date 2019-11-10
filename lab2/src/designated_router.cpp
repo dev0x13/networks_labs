@@ -1,4 +1,5 @@
 #include <chrono>
+#include <iostream>
 
 #include "designated_router.h"
 
@@ -19,11 +20,11 @@ DesignatedRouter::DesignatedRouter(const std::vector<NodeIndex>& neighbours) {
         lsaBroadcast.push_back(sendCh);
     }
 
-    lsaReceiveJob();
+    receiveOperationJob();
 }
 
-void DesignatedRouter::lsaReceiveJob() {
-    std::string serializedLsa;
+void DesignatedRouter::receiveOperationJob() {
+    std::string serializedTopologyOperation;
 
     auto lastLsaReceivingTime = std::chrono::system_clock::now();
 
@@ -32,33 +33,30 @@ void DesignatedRouter::lsaReceiveJob() {
            ).count() < waitForLsaMs)
     {
         for (auto& ch : lsaReceive) {
-            if (ch->receive(serializedLsa)) {
-                std::cout << "[DesignatedRouter] Received LSA from " << ch->getMQName() << std::endl;
-
+            if (ch->receive(serializedTopologyOperation)) {
                 std::stringstream ss;
-                ss << serializedLsa;
-                const Topology &newTopology = Topology::deserialize(ss);
+                ss << serializedTopologyOperation;
+                const TopologyOperation op = TopologyOperation::deserialize(ss);
 
-                lastLsaReceivingTime = std::chrono::system_clock::now();
-
-                if (!(knownTopology == newTopology)) {
-                    knownTopology.merge(newTopology);
-                    broadcastLsa();
+                if (knownTopology.applyOperation(op)) {
+                    lastLsaReceivingTime = std::chrono::system_clock::now();
+                    std::cout << "[DesignatedRouter] Received topology update from " << ch->getMQName() << std::endl;
+                    broadcastOperation(op);
                 }
             }
         }
     }
 
     knownTopology.saveToDot("topology.dot");
-    std::cout << "[DesignatedRouter] No LSA received during " << waitForLsaMs << " ms, terminating" << std::endl;
+    std::cout << "[DesignatedRouter] No topology updates during " << waitForLsaMs << " ms, terminating" << std::endl;
 }
 
-void DesignatedRouter::broadcastLsa() {
+void DesignatedRouter::broadcastOperation(const TopologyOperation& op) {
     std::stringstream ss;
-    knownTopology.serialize(ss);
-    const std::string serializedLsa = ss.str();
+    op.serialize(ss);
+    const std::string serializedOp = ss.str();
 
     for (auto& ch : lsaBroadcast) {
-        ch->send(serializedLsa);
+        ch->send(serializedOp);
     }
 }

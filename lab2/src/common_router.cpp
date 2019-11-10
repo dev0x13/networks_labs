@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "common_router.h"
 
 CommonRouter::CommonRouter(const std::string& routerID, const std::unordered_map<NodeIndex, Cost>& neighbours_) :
@@ -41,11 +43,11 @@ CommonRouter::CommonRouter(const std::string& routerID, const std::unordered_map
 
     std::thread(&CommonRouter::pongJob, this).detach();
     std::thread(&CommonRouter::pingJob, this).detach();
-    receiveLsaFromDrJob();
+    receiveOperationJob();
 }
 
-void CommonRouter::receiveLsaFromDrJob() {
-    std::string serializedLsa;
+void CommonRouter::receiveOperationJob() {
+    std::string serializedTopologyOperation;
 
     auto lastLsaReceivingTime = std::chrono::system_clock::now();
 
@@ -54,21 +56,21 @@ void CommonRouter::receiveLsaFromDrJob() {
                     std::chrono::system_clock::now() - lastLsaReceivingTime
             ).count() < waitForLsaMs))
     {
-        if (lsaReceive.receive(serializedLsa)) {
+        if (lsaReceive.receive(serializedTopologyOperation)) {
             std::stringstream ss;
-            ss << serializedLsa;
-            const Topology& newTopology = Topology::deserialize(ss);
+            ss << serializedTopologyOperation;
 
-            std::cout << "[CommonRouter " << id << "] Received LSA from DR" << std::endl;
+            const TopologyOperation op = TopologyOperation::deserialize(ss);
 
-            lastLsaReceivingTime = std::chrono::system_clock::now();
-
-            if (!(knownTopology == newTopology)) {
+            {
                 std::unique_lock<std::mutex> lock(topologyLock);
 
-                knownTopology.merge(newTopology);
-                shortestPaths = knownTopology.getShortestPaths(id);
-                std::cout << "[CommonRouter " << id << "] Shortest paths found" << std::endl;
+                if (knownTopology.applyOperation(op)) {
+                    lastLsaReceivingTime = std::chrono::system_clock::now();
+                    std::cout << "[CommonRouter " << id << "] Received topology update from DR" << std::endl;
+                    shortestPaths = knownTopology.getShortestPaths(id);
+                    std::cout << "[CommonRouter " << id << "] Shortest paths found" << std::endl;
+                }
             }
         }
     }
@@ -77,7 +79,7 @@ void CommonRouter::receiveLsaFromDrJob() {
         std::cout << "[CommonRouter " << id << "] No neighbours discovered during " << noNeighboursTimeoutMs << " ms, terminating"
                   << std::endl;
     } else {
-        std::cout << "[CommonRouter " << id << "] No LSA received during " << waitForLsaMs << " ms, terminating"
+        std::cout << "[CommonRouter " << id << "] No topology updates during " << waitForLsaMs << " ms, terminating"
                   << std::endl;
     }
 }
@@ -87,15 +89,26 @@ void CommonRouter::pingJob() {
         for (auto& ch : neighboursForward) {
             ch.second->send("ping");
 
-            if (knownTopology.isConnected(id, ch.first)) {
+            // This is a hacky and shitty way to avoid deadlock
+            // without locking mutex for whole loop body
+            {
                 std::unique_lock<std::mutex> lock(topologyLock);
 
-                if (std::chrono::duration_cast<std::chrono::milliseconds>(
-                        std::chrono::system_clock::now() - lastSeenNeighbour[ch.first]
-                ).count() > pingTimeoutMs)
-                {
-                    std::cout << "[CommonRouter " << id << "] Neighbour `" << ch.first << "` is dead" << std::endl;
-                    knownTopology.removeConnection(id, ch.first);
+                if (!knownTopology.isConnected(id, ch.first)) {
+                    continue;
+                }
+            }
+
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now() - lastSeenNeighbour[ch.first]
+            ).count() > pingTimeoutMs)
+            {
+                std::unique_lock<std::mutex> lock(topologyLock);
+
+                std::cout << "[CommonRouter " << id << "] Neighbour `" << ch.first << "` is dead" << std::endl;
+                const TopologyOperation op(id, ch.first);
+                if (knownTopology.applyOperation(op)) {
+                    sendOperationToDr(op);
                 }
             }
         }
@@ -106,24 +119,27 @@ void CommonRouter::pingJob() {
 
 void CommonRouter::pongJob() {
     auto lastNeighbourTime = std::chrono::system_clock::now();
+    std::string message;
 
     for (;;) {
-        std::string message;
-
         for (auto& ch : neighboursBackward) {
             if (ch.second->receive(message)) {
                 if (message == "ping") {
                     //std::cout << "[CommonRouter] Ping from " << ch.first << std::endl;
                     neighboursForward[ch.first]->send("pong");
                 } else if (message == "pong") {
-                    lastNeighbourTime = std::chrono::system_clock::now();
-                    //std::cout << "[CommonRouter] Pong from " << ch.first << std::endl;
                     std::unique_lock<std::mutex> lock(topologyLock);
 
+                    lastNeighbourTime = std::chrono::system_clock::now();
+                    //std::cout << "[CommonRouter] Pong from " << ch.first << std::endl;
+
                     lastSeenNeighbour[ch.first] = std::chrono::system_clock::now();
-                    if (knownTopology.addConnection(id, ch.first, neighbours[ch.first])) {
+
+                    const TopologyOperation op(id, ch.first, neighbours[ch.first]);
+
+                    if (knownTopology.applyOperation(op)) {
                         std::cout << "[CommonRouter " << id << "] New neighbour discovered: `" << ch.first << "`" << std::endl;
-                        sendLsaToDr();
+                        sendOperationToDr(op);
                     }
                 }
             }

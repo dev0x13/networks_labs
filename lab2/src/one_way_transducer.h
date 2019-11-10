@@ -2,8 +2,6 @@
 
 #include <boost/interprocess/ipc/message_queue.hpp>
 
-#include <iostream>
-
 // Hardcoded for simplicity
 #define MQ_SIZE 1000
 
@@ -67,11 +65,14 @@ public:
 private:
     void init() {
         buffer = new uint8_t[MAX_MESSAGE_SIZE_BYTES];
+
+        /*
         std::cout
                 << "[OneWayTransducer] Attached to "
                 << (mode == SENDING ? "sending" : "receiving")
                 << " queue `" << messageQueueName << "`"
                 << std::endl;
+        */
     }
 
     const std::string messageQueueName;
