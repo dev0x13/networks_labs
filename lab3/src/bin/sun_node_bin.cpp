@@ -4,45 +4,39 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/json_parser.hpp>
 
-#include "../worker_node.h"
-#include "../designated_router.h"
+#include "../sun_node.h"
+#include "../messages.h"
 
 namespace pt = boost::property_tree;
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cout << "Usage: router <designated router flag, 0 or 1> <path to config>\n";
+    if (argc < 1) {
+        std::cout << "Usage: sun_node_bin <path to config>\n";
         return 1;
     }
 
-    bool isDesignatedRouter = strcmp(argv[1], "1") == 0;
-
-    // 1. Read neighbours list from config
+    // 1. Parse and process config
 
     pt::ptree ptree;
-    pt::read_json(argv[2], ptree);
+    pt::read_json(argv[1], ptree);
 
-    // 2. Create router
+    // 2. Create worker node
 
-    if (!isDesignatedRouter) {
-        std::unordered_map<NodeIndex, Cost> neighbours{};
+    std::unordered_map<NodeIndex, Cost> neighbours{};
 
-        for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
-            neighbours[neighbour.first] = neighbour.second.get_value<Cost>();
-        }
-
-        const std::string routerID = ptree.get_child("id").get_value<NodeIndex>();
-
-        WorkerNode cr(routerID, neighbours);
-    } else {
-        std::vector<NodeIndex> neighbours;
-
-        for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
-            neighbours.push_back(neighbour.first);
-        }
-
-        DesignatedRouter dr(neighbours);
+    for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
+        neighbours[neighbour.first] = neighbour.second.get_value<Cost>();
     }
+
+    const std::string routerID = ptree.get_child("id").get_value<NodeIndex>();
+
+    const pt::ptree &coord = ptree.get_child("initial_coord");
+
+    SunNode sn(
+        routerID,
+        neighbours,
+        {coord.get_child("x").get_value<float>(), coord.get_child("y").get_value<float>()}
+    );
 
     return 0;
 }

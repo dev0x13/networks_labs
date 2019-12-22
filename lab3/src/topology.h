@@ -6,51 +6,15 @@
 #include <ostream>
 #include <istream>
 #include <cassert>
+#include "messages.h"
 
 using NodeIndex = std::string;
 using Cost = int64_t;
 using Graph = std::unordered_map<NodeIndex, std::unordered_map<NodeIndex, Cost>>;
 
-/*
- * Helper structures used for map with symmetric std::pair keys.
- */
-
-struct SymmetricPairHasher {
-    template <class T1, class T2>
-    std::size_t operator()(const std::pair<T1, T2>& p) const {
-        auto h1 = std::hash<T1>{}(p.first);
-        auto h2 = std::hash<T2>{}(p.second);
-        return h1 ^ h2;
-    }
-};
-
-struct SymmetricPairComparator {
-    template <class T1, class T2>
-    bool operator()(const std::pair<T1, T2>& p1, const std::pair<T1, T2>& p2) const {
-        return (p1.first == p2.first && p1.second == p2.second) ||
-               (p1.first == p2.second && p1.second == p2.first);
-    }
-};
-
-/*
- * Path in graph class. It stores only total path cost and last
- * node before destination node, so it makes sense to use it only
- * together with some structure containing results of Dijkstra
- * algorithm or so.
- */
-
-struct Path {
-    NodeIndex lastNodeBeforeDest;
-    Cost totalCost = -1;
-
-    Path() = default;
-
-    Path(const NodeIndex& lastNodeBeforeDest_, const Cost& totalCost_)
-        : lastNodeBeforeDest(lastNodeBeforeDest_), totalCost(totalCost_) {}
-};
-
 /* Topology operation class. Used to distribute
  * topology changes all over the network. */
+
 struct TopologyOperation {
     enum ChangeType {
         CONNECTION_ADD,
@@ -73,11 +37,14 @@ struct TopologyOperation {
     // Serializes topology operation to a stream
     void serialize(std::ostream& os) const {
         os << node1 << std::endl;
-        os << node2 << std::endl;;
-        os << cost << std::endl;;
+        os << node2 << std::endl;
+        os << cost << std::endl;
     }
 
-    // Deserializes topology operation from a stream
+    MessageType getMessageType() const  {
+        return MessageType::TOPOLOGY_OPERATION;
+    }
+
     static TopologyOperation deserialize(std::istream& is) {
         NodeIndex node1;
         NodeIndex node2;
@@ -98,6 +65,27 @@ struct TopologyOperation {
     const NodeIndex node2;
     const Cost cost;
     const ChangeType changeType{ UNDEFINED };
+};
+
+/*
+ * Helper structures used for map with symmetric std::pair keys.
+ */
+
+struct SymmetricPairHasher {
+    template <class T1, class T2>
+    std::size_t operator()(const std::pair<T1, T2>& p) const {
+        auto h1 = std::hash<T1>{}(p.first);
+        auto h2 = std::hash<T2>{}(p.second);
+        return h1 ^ h2;
+    }
+};
+
+struct SymmetricPairComparator {
+    template <class T1, class T2>
+    bool operator()(const std::pair<T1, T2>& p1, const std::pair<T1, T2>& p2) const {
+        return (p1.first == p2.first && p1.second == p2.second) ||
+               (p1.first == p2.second && p1.second == p2.first);
+    }
 };
 
 /*
@@ -152,6 +140,10 @@ public:
 
     // Save topology graph to DOT file, which can be visualized with GraphViz
     bool saveToDot(const std::string& filePath) const;
+
+    const Graph& getGraph() const {
+        return graph;
+    }
 
 private:
     Graph graph;

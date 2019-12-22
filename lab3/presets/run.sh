@@ -1,21 +1,19 @@
 #!/bin/bash
 
 echo "[CLEAR]"
-./clean_channels cfg/circle/dr.cfg
-echo "[DESIGNATED ROUTER]"
-./router 1 cfg/circle/dr.cfg &
+./clean_channels_bin cfg/clean_channels_bin.cfg
+echo "[CONTROL NODE]"
+./control_node_bin cfg/control_node.cfg &
 sleep 0.5
 echo "[ROUTER #1]"
-./router 0 cfg/circle/r1.cfg &
+./worker_node_bin cfg/r1.cfg &
 sleep 0.5
 echo "[ROUTER #2]"
-./router 0 cfg/circle/r2.cfg &
+./worker_node_bin cfg/r2.cfg &
 sleep 0.5
 echo "[ROUTER #3]"
-./router 0 cfg/circle/r3.cfg &
+./worker_node_bin cfg/r3.cfg &
 sleep 0.5
 echo "[ROUTER #4]"
-./router 0 cfg/circle/r4.cfg &
+./worker_node_bin cfg/r4.cfg &
 sleep 0.5
-echo "[ROUTER #5]"
-./router 0 cfg/circle/r5.cfg &

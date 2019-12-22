@@ -44,117 +44,148 @@ WorkerNode::WorkerNode(const std::string& routerID, const std::unordered_map<Nod
 
     std::thread(&WorkerNode::pongJob, this).detach();
     std::thread(&WorkerNode::pingJob, this).detach();
+    std::thread(&WorkerNode::invocationJob, this).detach();
     receiveOperationJob();
 }
 
 void WorkerNode::receiveOperationJob() {
-    std::string serializedTopologyOperation;
+    Message message;
 
     auto lastLsaReceivingTime = std::chrono::system_clock::now();
 
-    while (!noNeighbours && (
+    while ((
             std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::system_clock::now() - lastLsaReceivingTime
             ).count() < waitForLsaMs))
     {
-        if (lsaReceive.receive(serializedTopologyOperation)) {
-            std::stringstream ss;
-            ss << serializedTopologyOperation;
+        if (lsaReceive.receive(message)) {
+            switch (message.messageType) {
+                case MessageType::TOPOLOGY_OPERATION:
+                    {
+                        const TopologyOperation op = message.getMessageContent<TopologyOperation>();
 
-            const TopologyOperation op = TopologyOperation::deserialize(ss);
+                        std::unique_lock<std::mutex> lock(topologyLock);
 
-            {
-                std::unique_lock<std::mutex> lock(topologyLock);
+                        if (knownTopology.applyOperation(op)) {
+                            lastLsaReceivingTime = std::chrono::system_clock::now();
+                            std::cout << "[WorkerNode " << id << "] Received topology update from DR" << std::endl;
+                        }
+                    }
 
-                if (knownTopology.applyOperation(op)) {
-                    lastLsaReceivingTime = std::chrono::system_clock::now();
-                    std::cout << "[WorkerNode " << id << "] Received topology update from DR" << std::endl;
-                    // shortestPaths = knownTopology.getShortestPaths(id);
-                    std::cout << "[WorkerNode " << id << "] Shortest paths found" << std::endl;
-                }
+                    break;
+                case MessageType::INVOKE:
+                    /// INVOKE
+                    std::cout << "[WorkerNode " << id << "] INVOKE" << std::endl;
+
+                    {
+                        for (const auto& neighbour : neighboursForward) {
+                            neighbour.second->send({ MessageType::INVOKE, Invoke{} });
+                            break;
+                        }
+                    }
+
+                    break;
+                default:
+                    continue;
             }
         }
-    }
-
-    if (noNeighbours) {
-        std::cout << "[WorkerNode " << id << "] No neighbours discovered during " << noNeighboursTimeoutMs << " ms, terminating"
-                  << std::endl;
-    } else {
-        std::cout << "[WorkerNode " << id << "] No topology updates during " << waitForLsaMs << " ms, terminating"
-                  << std::endl;
     }
 }
 
 void WorkerNode::pingJob() {
+    const Message ping(MessageType::PING, Ping{});
+
     for (;;) {
         for (auto& ch : neighboursForward) {
-            ch.second->send("ping");
-
-            // This is a hacky and shitty way to avoid deadlock
-            // without locking mutex for whole loop body
-            {
-                std::unique_lock<std::mutex> lock(topologyLock);
-
-                if (!knownTopology.isConnected(id, ch.first)) {
-                    continue;
-                }
-            }
-
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(
-                    std::chrono::system_clock::now() - lastSeenNeighbour[ch.first]
-            ).count() > pingTimeoutMs)
-            {
-                std::unique_lock<std::mutex> lock(topologyLock);
-
-                std::cout << "[WorkerNode " << id << "] Neighbour `" << ch.first << "` is dead" << std::endl;
-                const TopologyOperation op(id, ch.first);
-                if (knownTopology.applyOperation(op)) {
-                    sendOperationToDr(op);
-                }
-            }
+            ch.second->send(ping);
         }
 
-        //std::this_thread::sleep_for(std::chrono::milliseconds(pingIntervalMs));
+        std::this_thread::sleep_for(std::chrono::milliseconds(pingIntervalMs));
     }
 }
 
 void WorkerNode::pongJob() {
-    auto lastNeighbourTime = std::chrono::system_clock::now();
-    std::string message;
+    Message message;
+    const Message pong(MessageType::PONG, Pong{});
 
     for (;;) {
         for (auto& ch : neighboursBackward) {
             if (ch.second->receive(message)) {
-                if (message == "ping") {
-                    //std::cout << "[WorkerNode] Ping from " << ch.first << std::endl;
-                    neighboursForward[ch.first]->send("pong");
-                } else if (message == "pong") {
-                    std::unique_lock<std::mutex> lock(topologyLock);
+                switch (message.messageType) {
+                    case MessageType::PING:
+                        neighboursForward[ch.first]->send(pong);
+                        break;
+                    case MessageType::PONG:
+                        {
+                            std::unique_lock<std::mutex> lock(topologyLock);
 
-                    lastNeighbourTime = std::chrono::system_clock::now();
-                    //std::cout << "[WorkerNode] Pong from " << ch.first << std::endl;
+                            neighbours[ch.first] = true;
 
-                    lastSeenNeighbour[ch.first] = std::chrono::system_clock::now();
+                            const TopologyOperation op(id, ch.first, neighbours[ch.first]);
 
-                    const TopologyOperation op(id, ch.first, neighbours[ch.first]);
+                            if (knownTopology.applyOperation(op)) {
+                                std::cout << "[WorkerNode " << id << "] New neighbour discovered: `" << ch.first << "`"
+                                          << std::endl;
+                                sendOperationToDr(op);
+                            }
+                        }
 
-                    if (knownTopology.applyOperation(op)) {
-                        std::cout << "[WorkerNode " << id << "] New neighbour discovered: `" << ch.first << "`" << std::endl;
-                        sendOperationToDr(op);
-                    }
+                        break;
+                    case MessageType::INVOKE:
+                        /// INVOKE
+                        std::cout << "[WorkerNode " << id << "] INVOKE" << std::endl;
+
+                        {
+                            NodeIndex nodeToInvoke = ch.first;
+
+                            for (const auto& neighbours : neighboursForward) {
+                                if (neighbours.first != nodeToInvoke) {
+                                    nodeToInvoke = neighbours.first;
+                                    break;
+                                }
+                            }
+
+                            neighboursForward[nodeToInvoke]->send({ MessageType::INVOKE, Invoke{} });
+                        }
+
+                        break;
+                    default:
+                        continue;
                 }
             }
         }
+    }
+}
 
-        // This is the case, when router has discovered no neighbours,
-        // so there is no reason to function anymore
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::system_clock::now() - lastNeighbourTime
-        ).count() > noNeighboursTimeoutMs)
-        {
-            noNeighbours = true;
+void WorkerNode::invocationJob() {
+    Message message;
+
+    for (;;) {
+        for (auto& ch : neighboursBackward) {
+            if (ch.second->receive(message)) {
+                switch (message.messageType) {
+                    case MessageType::INVOKE:
+                        /// INVOKE
+                        std::cout << "[WorkerNode " << id << "] INVOKE" << std::endl;
+
+                        {
+                            NodeIndex nodeToInvoke = ch.first;
+
+                            for (const auto& neighbours : neighboursForward) {
+                                if (neighbours.first != nodeToInvoke) {
+                                    nodeToInvoke = neighbours.first;
+                                    break;
+                                }
+                            }
+
+                            neighboursForward[nodeToInvoke]->send({ MessageType::INVOKE, Invoke{} });
+                        }
+
+                        break;
+                    default:
+                        continue;
+                }
+            }
         }
-
-        //std::this_thread::sleep_for(std::chrono::milliseconds(pingIntervalMs));
     }
 }

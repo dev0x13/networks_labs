@@ -11,20 +11,23 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-include_directories(libs/boost_1_71_0/include)
-link_libraries(pthread rt)
-
 # Main router executable
 
 file(GLOB sources src/*.cpp)
 
-add_executable(control_node_bin ${sources} src/bin/control_node_bin.cpp)
+include_directories(libs/boost_1_71_0/include)
+link_libraries(pthread rt)
 
-add_executable(worker_node_bin ${sources} src/bin/worker_node_bin.cpp)
+add_library(core STATIC ${sources})
+link_libraries(core)
 
-add_executable(focus_node_bin ${sources} src/bin/focus_node_bin.cpp)
+add_executable(control_node_bin src/bin/control_node_bin.cpp)
 
-add_executable(sun_node_bin ${sources} src/bin/sun_node_bin.cpp)
+add_executable(worker_node_bin src/bin/worker_node_bin.cpp)
+
+add_executable(focus_node_bin src/bin/focus_node_bin.cpp)
+
+add_executable(sun_node_bin src/bin/sun_node_bin.cpp)
 
 # An utility for cleaning message queues (for some reason
 # sometimes boost::interprocess glitches and creates multiple

@@ -30,26 +30,28 @@ public:
     // neighbours.
     void pingJob();
 
+    // "Ping" repetitive job, sends `ping` message to this router
+    // neighbours.
+    void invocationJob();
+
     // Serializes a topology operation and send it to DR
     void sendOperationToDr(const TopologyOperation& op) {
-        std::stringstream ss;
-        op.serialize(ss);
-        lsaSend.send(ss.str());
+        lsaSend.send({ MessageType::TOPOLOGY_OPERATION, op });
     }
 
     // Repetitive job, handles topology changes received from DR.
     void receiveOperationJob();
 private:
-    // Timeouts ans intervals
-    const int64_t noNeighboursTimeoutMs = 5000;
-    const int64_t waitForLsaMs = 2000;
-    //const int64_t pingIntervalMs = 500;
-    const int64_t pingTimeoutMs = 1000;
+    const int64_t waitForLsaMs = 30000;
+
+    const int64_t pingIntervalMs = 200;
 
     // Router ID
     const NodeIndex id;
 
     const Vector coord;
+
+    float angle;
 
     // A piece of network topology, which router knows
     Topology knownTopology;
@@ -57,17 +59,10 @@ private:
     // Stores router's neighbours
     std::unordered_map<NodeIndex, Cost> neighbours;
 
-    // A flag for initial neighbours search (if no neighbours
-    // were discovered router terminates)
-    bool noNeighbours = false;
-
     // Communication channels with designated router to send and receive
     // Linked State Advertisement
     OneWayTransducer<TransducerMode::SENDING, boost::interprocess::open_only_t> lsaSend;
     OneWayTransducer<TransducerMode::RECEIVING, boost::interprocess::open_only_t> lsaReceive;
-
-    // Stores every neighbour last seen timestamp to determine if neighbour died
-    std::unordered_map<NodeIndex, std::chrono::time_point<std::chrono::system_clock>> lastSeenNeighbour;
 
     // Stores communication channels between router and its neighbours.
     // We store pointers, because it's hard to implement a proper copy

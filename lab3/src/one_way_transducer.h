@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/interprocess/ipc/message_queue.hpp>
+#include "messages.h"
 
 // Hardcoded for simplicity
 #define MQ_SIZE 1000
@@ -35,24 +36,34 @@ public:
         delete[] buffer;
     }
 
-    bool send(const std::string& message) {
+    bool send(const Message& message) {
         static_assert(mode == SENDING, "Cannot send to a receiving queue");
-        assert(message.size() <= MAX_MESSAGE_SIZE_BYTES);
 
-        return messageQueue.try_send(message.c_str(), message.size(), 0);
+        std::stringstream ss;
+        message.serialize(ss);
+
+        const std::string dataToSend = ss.str();
+
+        assert(dataToSend.size() <= MAX_MESSAGE_SIZE_BYTES);
+
+        return messageQueue.try_send(dataToSend.c_str(), dataToSend.size(), 0);
     }
 
-    bool receive(std::string& message) {
+    bool receive(Message& message) {
         static_assert(mode == RECEIVING, "Cannot receive from a sending queue");
-        assert(message.size() <= MAX_MESSAGE_SIZE_BYTES);
 
         unsigned int priority;
         boost::interprocess::message_queue::size_type recvdSize;
         bool res = messageQueue.try_receive(buffer, MAX_MESSAGE_SIZE_BYTES, recvdSize, priority);
 
         if (res) {
-            message.resize(recvdSize);
-            message.assign(buffer, buffer + recvdSize);
+            std::string dataToReceive(buffer, buffer + recvdSize);
+
+            std::stringstream ss;
+
+            ss << dataToReceive;
+
+            message = Message::deserialize(ss);
         }
 
         return res;

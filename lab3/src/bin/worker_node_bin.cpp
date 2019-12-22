@@ -11,7 +11,7 @@ namespace pt = boost::property_tree;
 
 int main(int argc, char* argv[]) {
     if (argc < 1) {
-        std::cout << "Usage: common_router_bin <path to config>\n";
+        std::cout << "Usage: worker_node_bin <path to config>\n";
         return 1;
     }
 

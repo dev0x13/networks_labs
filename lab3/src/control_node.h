@@ -13,11 +13,11 @@ public:
 
     ~ControlNode() {
         for (auto &ch : lsaReceive) {
-            delete ch;
+            delete ch.second;
         }
 
         for (auto &ch : lsaBroadcast) {
-            delete ch;
+            delete ch.second;
         }
     }
 
@@ -26,6 +26,8 @@ public:
 
     // Broadcast topology changes to common routers
     void broadcastOperation(const TopologyOperation& op);
+
+    void invokeFirstWorker();
 
 private:
     static const constexpr int64_t waitForLsaMs = 5000;
@@ -36,6 +38,6 @@ private:
     // Stores communication channels between DR and all common routers.
     // We store pointers, because it's hard to implement a proper copy
     // constructor for OneWayTransducer.
-    std::vector<OneWayTransducer<TransducerMode::RECEIVING, boost::interprocess::create_only_t>*> lsaReceive;
-    std::vector<OneWayTransducer<TransducerMode::SENDING, boost::interprocess::create_only_t>*> lsaBroadcast;
+    std::unordered_map<NodeIndex, OneWayTransducer<TransducerMode::RECEIVING, boost::interprocess::create_only_t>*> lsaReceive;
+    std::unordered_map<NodeIndex, OneWayTransducer<TransducerMode::SENDING, boost::interprocess::create_only_t>*> lsaBroadcast;
 };
