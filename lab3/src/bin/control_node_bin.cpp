@@ -22,7 +22,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<NodeIndex> neighbours;
 
-    for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
+    for (const pt::ptree::value_type &neighbour : ptree.get_child("workers")) {
         neighbours.push_back(neighbour.first);
     }
 

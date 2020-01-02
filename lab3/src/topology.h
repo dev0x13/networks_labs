@@ -6,11 +6,9 @@
 #include <ostream>
 #include <istream>
 #include <cassert>
-#include "messages.h"
 
-using NodeIndex = std::string;
-using Cost = int64_t;
-using Graph = std::unordered_map<NodeIndex, std::unordered_map<NodeIndex, Cost>>;
+#include "messages.h"
+#include "common.h"
 
 /* Topology operation class. Used to distribute
  * topology changes all over the network. */

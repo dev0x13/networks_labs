@@ -22,10 +22,10 @@ int main(int argc, char* argv[]) {
 
     // 2. Create focus node
 
-    std::unordered_map<NodeIndex, Cost> neighbours{};
+    std::vector<NodeIndex> workers;
 
-    for (const pt::ptree::value_type &neighbour : ptree.get_child("neighbours")) {
-        neighbours[neighbour.first] = neighbour.second.get_value<Cost>();
+    for (const pt::ptree::value_type &neighbour : ptree.get_child("workers")) {
+        workers.push_back(neighbour.first);
     }
 
     const std::string routerID = ptree.get_child("id").get_value<NodeIndex>();
@@ -34,7 +34,7 @@ int main(int argc, char* argv[]) {
 
     FocusNode fn(
         routerID,
-        neighbours,
+        workers,
         {coord.get_child("x").get_value<float>(), coord.get_child("y").get_value<float>()}
     );
 

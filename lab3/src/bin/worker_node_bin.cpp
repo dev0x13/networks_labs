@@ -29,13 +29,17 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string routerID = ptree.get_child("id").get_value<NodeIndex>();
+    const std::string sunNodeID = ptree.get_child("sun_node_id").get_value<NodeIndex>();
+    const std::string focusNodeID = ptree.get_child("focus_node_id").get_value<NodeIndex>();
 
     const pt::ptree &coord = ptree.get_child("coord");
 
     WorkerNode wn(
         routerID,
         neighbours,
-        {coord.get_child("x").get_value<float>(), coord.get_child("y").get_value<float>()}
+        {coord.get_child("x").get_value<float>(), coord.get_child("y").get_value<float>()},
+        sunNodeID,
+        focusNodeID
     );
 
     return 0;

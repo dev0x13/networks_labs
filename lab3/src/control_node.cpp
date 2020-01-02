@@ -3,15 +3,15 @@
 
 #include "control_node.h"
 
-ControlNode::ControlNode(const std::vector<NodeIndex>& neighbours) {
+ControlNode::ControlNode(const std::vector<NodeIndex>& neighbours) : log("ControlNode") {
     for (const auto& n : neighbours) {
         lsaReceive[n] = new OneWayTransducer<TransducerMode::RECEIVING, boost::interprocess::create_only_t>(
-                "DR_" + n + "_receive",
+                "DR_" + n + "_backward",
                 boost::interprocess::create_only
         );
 
         lsaBroadcast[n] = new OneWayTransducer<TransducerMode::SENDING, boost::interprocess::create_only_t>(
-                "DR_" + n + "_send",
+                "DR_" + n + "_forward",
                 boost::interprocess::create_only
         );
     }
@@ -20,14 +20,13 @@ ControlNode::ControlNode(const std::vector<NodeIndex>& neighbours) {
 }
 
 void ControlNode::receiveOperationJob() {
+    // 1. Build network topology just as in lab #2
+
     Message serializedTopologyOperationMessage;
 
-    auto lastLsaReceivingTime = std::chrono::system_clock::now();
+    Timer t(waitForLsaMs);
 
-    while (std::chrono::duration_cast<std::chrono::milliseconds>(
-               std::chrono::system_clock::now() - lastLsaReceivingTime
-           ).count() < waitForLsaMs)
-    {
+    while (!t.expired()) {
         for (auto& ch : lsaReceive) {
             if (ch.second->receive(serializedTopologyOperationMessage)) {
                 if (serializedTopologyOperationMessage.messageType != MessageType::TOPOLOGY_OPERATION) {
@@ -37,16 +36,18 @@ void ControlNode::receiveOperationJob() {
                 const TopologyOperation op = serializedTopologyOperationMessage.getMessageContent<TopologyOperation>();
 
                 if (knownTopology.applyOperation(op)) {
-                    lastLsaReceivingTime = std::chrono::system_clock::now();
-                    std::cout << "[ControlNode] Received topology update from " << ch.second->getMQName() << std::endl;
+                    log << "Received topology update from " << ch.second->getMQName() << std::endl;
                     broadcastOperation(op);
                 }
             }
         }
     }
 
-    knownTopology.saveToDot("built_topology.dot");
-    std::cout << "[ControlNode] Topology researched, determining invocation order" << std::endl;
+    // knownTopology.saveToDot("built_topology.dot");
+
+    // 2. Try to trigger focusing process
+
+    log << "Topology researched, determining invocation order" << std::endl;
 
     invokeFirstWorker();
 }
@@ -60,6 +61,10 @@ void ControlNode::broadcastOperation(const TopologyOperation& op) {
 }
 
 void ControlNode::invokeFirstWorker() {
+    // We take the network graph, make sure, that its topology is just a line,
+    // than find any node with one neighbour (obviously it is the last node or the first
+    // node in this line) and invoke it for focusing.
+
     const Graph& networkGraph = knownTopology.getGraph();
 
     std::vector<NodeIndex> nodesWithOneNeighbour;
@@ -68,10 +73,10 @@ void ControlNode::invokeFirstWorker() {
         const size_t numNeighbours = nodeConnection.second.size();
 
         if (numNeighbours == 0) {
-            std::cout << "[ControlNode] Found node with zero neighbours, required topology is line, terminating" << std::endl;
+            log << "Found node with zero neighbours, required topology is line, terminating" << std::endl;
             return;
         } else if (numNeighbours > 2) {
-            std::cout << "[ControlNode] Found node with more than two neighbours, required topology is line, terminating" << std::endl;
+            log << "Found node with more than two neighbours, required topology is line, terminating" << std::endl;
             return;
         } else if (numNeighbours == 1) {
             nodesWithOneNeighbour.push_back(nodeConnection.first);
@@ -79,7 +84,7 @@ void ControlNode::invokeFirstWorker() {
     }
 
     if (nodesWithOneNeighbour.size() != 2) {
-        std::cout << "[ControlNode] Required topology is line, terminating" << std::endl;
+        log << "Required topology is line, terminating" << std::endl;
         return;
     }
 

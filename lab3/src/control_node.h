@@ -2,12 +2,13 @@
 
 #include "one_way_transducer.h"
 #include "topology.h"
+#include "common.h"
 
 #include <vector>
 
-// Designated network router class. Intended to synchronize
-// LSA between common routers
-class ControlNode {
+// Control node class. Can be think as designed router producing LSA.
+// It also triggering the process of focusing.
+class ControlNode : public BaseNode {
 public:
     explicit ControlNode(const std::vector<NodeIndex>& neighbours);
 
@@ -19,17 +20,24 @@ public:
         for (auto &ch : lsaBroadcast) {
             delete ch.second;
         }
+
+        log << "Terminated" << std::endl;
     }
 
     // Handles topology changes received from common routers
     void receiveOperationJob();
 
-    // Broadcast topology changes to common routers
+    // Broadcast topology changes to worker nodes
     void broadcastOperation(const TopologyOperation& op);
 
+    // Validates network topology and invokes first worker
     void invokeFirstWorker();
 
 private:
+    Logger log;
+
+    // Timeout for LSA building. If passed, than network topology
+    // is considered built and focsuing process is started
     static const constexpr int64_t waitForLsaMs = 5000;
 
     // Stores known topology
