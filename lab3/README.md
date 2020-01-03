@@ -7,7 +7,7 @@ The process is implemented as an interacting system of four types of agents:
  accumulated on focus raise or not. After focusing worker invokes the next worker to repeat
  process. The last worker in a row invokes the previous invoker, thereby the focusing
  process is circular.
-* **SunNode** agent is basically the Sun. Its only function is to change its coordinates
+* **SunNode** agent is simpy the Sun. Its only function is to change its coordinates
 with the given speed and report it to workers.
 * **ControlNode** is a commander for workers. It determines workers network topology,
 verifies that it is a line and then invokes the last worker to start focusing process.
