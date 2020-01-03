@@ -1,0 +1,218 @@
+\documentclass{report}
+\usepackage[T1,T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{parcolumns}
+\usepackage{fancyvrb}
+\usepackage{hyperref}
+\usepackage{unicode-math}
+\usepackage{graphicx, float}
+\usepackage{caption}
+
+
+\title{
+Отчет по лабораторной работе №1.\\
+Реализация протоколов автоматического запроса повторной передачи Go-Back-N и Selective Repeat
+}
+\author{Мануилов Георгий, студент гр. 3640102/80201}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\renewcommand\thesection{\arabic{section}}
+
+\section{Постановка задачи}
+Требуется разработать систему из двух агентов, способных обмениваться данными друг с другом. Требования к системе:
+\begin{itemize}
+    \item Должна моделироваться ненадежность канала связи: с заданной вероятностью пакеты при передаче должны теряться.
+    \item Должна обеспечиваться доставка получателю всех отправленных данных посредством протоколов автоматического запроса повторной передачи Go-Back-N и Selective Repeat.
+\end{itemize}
+
+\section{Технические подробности реализации}
+Программа-агент реализована на языке программирования C++. Программа может функционировать в двух режимах: прием и передача. Система представляет из себя два экземпляра программы, запущенных в разных режимах. Взаимодействие между процессами осуществляется с помощью очередей сообщений посредством библиотеки Boost.Interprocess.
+\newline
+\newline
+Программа разделена на следующие сущности:
+\begin{itemize}
+    \item {\bf OneWayTransducer} - примитивный приемник/передатчик. Не контролирует доставку, работает только в одну сторону, утилизирует одну очередь сообщений.
+    \item {\bf SendingTransducer} - передатчик, реализующий протокол автоматического запроса повторной передачи данных, утилизирует две очереди сообщений (два экземпляра OneWayTransducer): одну для отправки, одну для получения подтверждения доставки.
+    \item {\bf ReceivingTransducer} - приемник, реализующий протокол автоматического запроса повторной передачи данных, утилизирует две очереди сообщений (два экземпляра OneWayTransducer): одну для получения, одну для отправки подтверждения доставки.
+\end{itemize}
+Каждый пакет (сообщение) для передачи содержит порядковый номер и 1 байт данных.
+\newline
+Программа-агент получает на вход путь к конфигурационному файлу, который содержит в себе следующие поля:
+\begin{itemize}
+    \item {\bf mode} - режим функционирования агента (SEND/RECEIVE)
+    \item {\bf mq\_id} - ID канала передачи данных (должен совпадать у приемника и передатчика)
+    \item {\bf protocol} - ARQ протокол (GBN/SR)
+    \item {\bf file} - путь к файлу с данными для передачи (только для передатчика)
+    \item {\bf window\_size} - размер скользящего окна (только для передатчика)
+    \item {\bf timeout} - время в милисекундах, после которого сообщение считается потерянным, если не пришло подтверждение доставки (только для передатчика)
+    \item {\bf loss\_probability} - вероятность (от 0 до 1) потери сообщения (только для приемника)
+\end{itemize}
+\newline
+Исходный код решения, а также инструкции по сборке и запуску представлены в git репозитории по ссылке \url{https://github.com/dev0x13/networks_labs/tree/master/lab1}.
+\newpage
+\section{Пример работы программы}
+Конфигурация агента-передатчика:
+\begin{Verbatim}[frame=single]
+mode = SEND
+mq_id = 1
+protocol = GBN
+file = /home/george/networks_labs/lab1/cfg/test_file
+window_size = 2
+timeout = 500
+\end{Verbatim}
+\newline
+Конфигурация агента-приемника:
+\begin{Verbatim}[frame=single]
+mode = RECEIVE
+mq_id = 1
+protocol = GBN
+loss_probability = 0.3
+\end{Verbatim}
+\newline
+Вывод:
+\begin{parcolumns}{2}
+\colchunk[1]{
+\begin{verbatim}
+$ ./agent ../cfg/sender.cfg 
+Attached to sending queue `1_receive`
+Attached to receiving queue `1_ack`
+Sent: Message[b: h] to `1_receive`
+Sent: Message[b: e] to `1_receive`
+Sent: Message[b: h] to `1_receive`
+Sent: Message[b: e] to `1_receive`
+Ack: Message[b: h] from `1_ack`
+Sent: Message[b: e] to `1_receive`
+Sent: Message[b: l] to `1_receive`
+Ack: Message[b: e] from `1_ack`
+Ack: Message[b: l] from `1_ack`
+Sent: Message[b: l] to `1_receive`
+Sent: Message[b: o] to `1_receive`
+Ack: Message[b: l] from `1_ack`
+Sent: Message[b: o] to `1_receive`
+Sent: Message[b: 
+] to `1_receive`
+Ack: Message[b: o] from `1_ack`
+Ack: Message[b: 
+] from `1_ack`
+Transmission finished!
+Sent: hello
+\end{verbatim}
+}
+\colchunk[2]{
+\begin{verbatim}
+$ ./agent ../cfg/receiver.cfg 
+Attached to sending queue `1_ack`
+Attached to receiving queue `1_receive`
+Lost: Message[b: h] from `1_receive`
+Received: Message[b: h] from `1_receive`
+Lost: Message[b: e] from `1_receive`
+Received: Message[b: e] from `1_receive`
+Received: Message[b: l] from `1_receive`
+Received: Message[b: l] from `1_receive`
+Lost: Message[b: o] from `1_receive`
+Received: Message[b: o] from `1_receive`
+Received: Message[b: 
+] from `1_receive`
+Transmission finished!
+Received: hello
+\end{verbatim}
+}
+\end{parcolumns}
+
+\newpage
+\section{Оценка и сравнение эффективности протоколов}
+Эффективность протоколов оценивалась по двум параметрам:
+\begin{itemize}
+\item по коэффициенту эффективности $k = \frac{\mbox{количество пакетов для передачи}}{\mbox{количество переданных пакетов}}$
+\item по времени от начала до конца передачи в милисекундах $t$.
+\end{itemize}
+Для оценки проводилась серия сеансов передачи с разными размерами скользящего окна $w$ и с разными вероятностями потери пакетов $p$. Во всех сеансах использовался один и тот же набор данных (85 пакетов). Полученные зависимости представлены в таблицах 1 и 2, и на рис. 1-4.
+\begin{table}[h]
+\centering
+\begin{tabular}{ |c|c|c|c|c| }
+ \hline
+ $p$ & $t_{GBN}$, мс & $k_{GBN}$ & $t_{SR}$, мс & $k_{SR}$ \\ [0.5ex] 
+ \hline
+ 0 & 293 & 1.00 & 292 & 1.00 \\ 
+ 0.1 & 354 & 0.83 & 274 & 0.89 \\ 
+ 0.2 & 393 & 0.75 & 456 & 0.73 \\ 
+ 0.3 & 570 & 0.53 & 524 & 0.71 \\ 
+ 0.4 & 708 & 0.42 & 607 & 0.63 \\ 
+ 0.5 & 1081 & 0.27 & 768 & 0.51 \\ 
+ 0.6 & 1525 & 0.19 & 1234 & 0.34 \\ 
+ 0.7 & 1690 & 0.18 & 1337 & 0.32 \\ 
+ 0.8 & 3203 & 0.09 & 2052 & 0.21 \\ 
+ 0.9 & 7372 & 0.04 & 4922 & 0.09 \\ 
+ \hline
+\end{tabular}
+\captionsetup{justification=centering}
+\caption{Зависимость эффективности протоколов от вероятности потери пакета $p$ при фиксированном размере скользящего окна $w=3$}
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ |c|c|c|c|c| }
+ \hline
+ $w$ & $t_{GBN}$, мс & $k_{GBN}$ & $t_{SR}$, мс & $k_{SR}$ \\ [0.5ex] 
+ \hline
+ 1 & 1718 & 0.5 & 1676 & 0.51 \\ 
+ 2 & 992 & 0.44 & 979 & 0.52 \\ 
+ 3 & 1097 & 0.27 & 697 & 0.53 \\ 
+ 4 & 913 & 0.25 & 739 & 0.44 \\ 
+ 5 & 1124 & 0.16 & 533 & 0.54 \\ 
+ 6 & 945 & 0.16 & 428 & 0.54 \\ 
+ 7 & 853 & 0.15 & 394 & 0.54 \\ 
+ 8 & 846 & 0.14 & 460 & 0.47 \\ 
+ 9 & 631 & 0.17 & 425 & 0.47 \\ 
+ 10 & 630 & 0.15 & 375 & 0.5 \\ 
+ \hline
+\end{tabular}
+\captionsetup{justification=centering}
+\caption{Зависимость эффективности протоколов от размера скользящего окна $w$ при фиксированной вероятности потери пакета $p=0.5$}
+\end{table}
+
+\begin{figure}[bp!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{1.png}
+    \caption{Зависимость коэффициента эффективности от вероятности потери пакета}
+    \label{fig:1.png}
+\end{figure}
+
+\begin{figure}[bp!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{2.png}
+    \caption{Зависимость времени передачи от вероятности потери пакета}
+    \label{fig:2.png}
+\end{figure}
+
+\begin{figure}[bp!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{3.png}
+    \caption{Зависимость коэффициента эффективности от размера скользящего окна}
+    \label{fig:1.png}
+\end{figure}
+
+\begin{figure}[bp!]
+    \centering
+    \includegraphics[width=0.8\textwidth]{4.png}
+    \caption{Зависимость времени передачи от размера скользящего окна}
+    \label{fig:2.png}
+\end{figure}
+
+\newpage
+По представленным зависимостям можно сделать следующие выводы:
+\begin{itemize}
+    \item При малых ($<0.3$) вероятностях потери пакета и фиксированном размере окна протоклы показывают одинковую эффективность.
+    \item При больших ($>0.3$) вероятностях потери пакета и фиксированном размере окна Selective Repeat показывает большую эффективность, чем Go-Back-N.
+    \item Размер окна не оказывает влияние на коэффициент эффективности для Selective Repeat при фиксированной вероятности потери пакета, но его увеличение ведет к уменьшению времени передачи, то есть чем больше размер окна, тем больше эффективность протокола.
+    \item Увеличение размера окна при фиксированной вероятности потери пакета ведет к уменьшению эффективности Go-Back-N.
+\end{itemize}
+
+\end{document}
+

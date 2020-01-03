@@ -1,0 +1,160 @@
+\documentclass{report}
+\usepackage[T1,T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage[a4paper, margin=1in]{geometry}
+\usepackage{parcolumns}
+\usepackage{fancyvrb}
+\usepackage{hyperref}
+\usepackage{unicode-math}
+\usepackage{graphicx, float}
+\usepackage{caption}
+\usepackage{adjustbox}
+
+\title{
+Отчет по лабораторной работе №3.\\
+Реализация системы адаптивного управления
+}
+\author{Мануилов Георгий, студент гр. 3640102/80201}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\renewcommand\thesection{\arabic{section}}
+
+\section{Постановка задачи}
+Требуется разработать систему адаптивного управления в контексте компьютерных сетей. В работе был реализован вариант легенды о зеркалах Архимеда: дано Солнце, которое может менять свое положение; некоторое количество зеркал, которые могут поворачиваться, и точка, в которой требуется сфокусировать солнечные лучи, отраженные зеркалами. 
+
+\section{Технические подробности реализации}
+Программа реализована на языке программирования C++. Каждый из агентов является отдельным процессом, взаимодействие между которыми осуществляется с помощью очередей сообщений посредством библиотеки Boost.Interprocess.
+\newline
+\newline
+Программа реализует систему из взаимодействующих агентов четырех типов:
+\begin{itemize}
+    \item {\bf ControlNode} - агент, организующий работу агентов-исполнителей.
+    \item {\bf WorkerNode} - агент-исполнитель, непосредственно занимающийся фокусировкой своего зеркала.
+    \item {\bf SunNode} - агент, представляющий Солнце.
+    \item {\bf FocusNode} - агент, представляющий точку фокуса.
+\end{itemize}
+\newline
+Для упрощения программы были приняты следующие допущения:
+\begin{itemize}
+    \item Каналы между агентами являются надежными, то есть сообщение между ними не требует использования протокола автоматического запроса повторной передачи.
+    \item Сеть стабильна, то есть ее топология не может поменяться с течением времени.
+\end{itemize}
+
+Исходный код решения, инструкции по сборке и запуску, а также примеры представлены в git репозитории по ссылке \url{https://github.com/dev0x13/networks_labs/tree/master/lab3}.
+
+\section{Высокоуровневый алгоритм функционирования системы}
+\begin{enumerate}
+    \item {\bf ControlNode} устанавливает топологию сети так же, как это происходило в лабораторной работе №2 за исключением поиска кратчайшего пути.
+    \item {\bf ControlNode} валидирует топологию сети: требуется, чтобы это была линия.
+    \item {\bf ControlNode} находит крайний узел {\bf WorkerNode}, имеющий только одного соседа, и посылает ему сообщение {\it INVOKE}, запуская тем самым непрерывный процесс адаптивной фокусировки.
+    \item {\bf WorkerNode}, получивший сообщение, получает координаты Солнца и передает информацию об отраженном луче {\bf FocusNode}.
+    \item {\bf FocusNode} сверяет информацию со своими координатами и дает обратную связь в виде значения интенсивности света в фокусе: если отраженный луч попал в фокус, значение будет увеличено.
+    \item {\bf WorkerNode} получает значение интенсивности в фокусе и, в случае если значение не увеличилось с предыдущей итерации, поворачивает свое зеркало на небольшой угол и отправляет {\bf FocusNode} новую информацию об отраженном луче. Процедура повторяется до достижения фокусировки.
+    \item После фокусировки {\bf WorkerNode} посылает сообщение {\it INVOKE} своему соседу (либо отличного от того, от которого пришло предудщее сообщение {\it INVOKE}, либо тому, от которого пришло сообщение в случае если он является последним в цепи). Таким образом, процесс фокусировки непрерывен и зациклен. Это необходимо, так как координаты {\bf SunNode} постоянно меняются вне зависимости от действий других агентов.
+\end{enumerate}
+Типы сообщений, используемых агентами для взаимодействия по приведенным выше протоколам и их описания представлены в таблице 1.
+
+\begin{table}[h]
+\begin{adjustbox}{width=1.2\textwidth,center}
+\begin{tabular}{ |c|c|c|c| }
+ \hline
+ {\bf Отправитель} & {\bf Получатель} & {\bf Тип сообщени}я & {\bf Описание} \\ [0.5ex] 
+ \hline
+ WorkerNode & SunNode & PING & Запрос на получение координат Солнца \\ 
+ WorkerNode & ControlNode & TOPOLOGY\_OPERATION & Сообщение об изменении топологии сети \\ 
+ WorkerNode & FocusNode & VECTOR\_AND\_POINT & Координаты WorkerNode + отраженный вектор \\
+ WorkerNode & FocusNode & PING & Запрос на получение интенсивности в фокусе \\
+ WorkerNode & WorkerNode & PING & Сообщение ping \\ 
+ WorkerNode & WorkerNode & PONG & Ответ на сообщение ping \\ 
+ WorkerNode & WorkerNode & INVOKE & Сообщение о передаче потока управления \\ 
+ ControlNode & WorkerNode & TOPOLOGY\_OPERATION & Сообщение об изменении топологии сети \\ 
+ ControlNode & WorkerNode & INVOKE & Сообщение о передаче потока управления \\ 
+ SunNode & WorkerNode & VECTOR & Текущие координаты Солнца \\ 
+ FocusNode & WorkerNode & INTENSITY & Текущая интесивность в фокусе \\ 
+ \hline
+\end{tabular}
+\end{adjustbox}
+\captionsetup{justification=centering}
+\caption{Типы сообщений, используемые агентами для взаимодействия}
+\end{table}
+
+\newpage
+\section{Примеры работы программы}
+Пример конфигурация системы можно найти в папке репозитория \url{https://github.com/dev0x13/networks_labs/tree/master/lab3/presets}. Процессы запускаются асинхронно. Солнце изменяет свои координаты по оси абсцисс от -4 до 4. Приращение координаты - 1 единица в секунду. Конфигурация примера представлена на рис. 1. Каждый из агентов имеет безусловное время жизни, поэтому после нескольких циклов фокусировки все агенты завершают свою работу.
+
+\begin{figure}[!htb]
+     \centering
+     \includegraphics[width=.4\linewidth]{img.png}
+     \caption{Конфигурация примера из папки {\it presets/}}\label{Fig:Data1}
+\end{figure}
+
+\newline
+\newpage
+Вывод примера:
+\begin{verbatim}
+george@george:~/networks_labs/lab3/presets$ ./run.sh
+[WorkerNode r1] New neighbour discovered: `r2`
+[ControlNode] Received topology update from DR_r1_backward
+[WorkerNode r2] New neighbour discovered: `r1`
+[WorkerNode r3] Received topology update from control node
+[WorkerNode r3] New neighbour discovered: `r2`
+[WorkerNode r2] New neighbour discovered: `r3`
+[ControlNode] Received topology update from DR_r3_backward
+[WorkerNode r1] Received topology update from control node
+[WorkerNode r4] Received topology update from control node
+[WorkerNode r4] Received topology update from control node
+[WorkerNode r3] New neighbour discovered: `r4`
+[ControlNode] Received topology update from DR_r3_backward
+[WorkerNode r4] New neighbour discovered: `r3`
+[WorkerNode r1] Received topology update from control node
+[WorkerNode r2] Received topology update from control node
+[ControlNode] Topology researched, determining invocation order
+[WorkerNode r4] Invoked by control node
+[ControlNode] Terminated
+[WorkerNode r4] Focused for Sun coord (-0.7, 5) after 40 rotations
+[WorkerNode r3] Invoked by neighbour `r4`
+[WorkerNode r3] Focused for Sun coord (-0.8, 5) after 7 rotations
+[WorkerNode r2] Invoked by neighbour `r3`
+[WorkerNode r2] Focused for Sun coord (-0.8, 5) after 1 rotations
+[WorkerNode r1] Invoked by neighbour `r2`
+[WorkerNode r1] Focused for Sun coord (-1.2, 5) after 14 rotations
+[WorkerNode r2] Invoked by neighbour `r1`
+[WorkerNode r2] Focused for Sun coord (-1.3, 5) after 2 rotations
+[WorkerNode r3] Invoked by neighbour `r2`
+[WorkerNode r3] Focused for Sun coord (-1.3, 5) after 21 rotations
+[WorkerNode r4] Invoked by neighbour `r3`
+[WorkerNode r4] Focused for Sun coord (-1.4, 5) after 35 rotations
+[WorkerNode r3] Invoked by neighbour `r4`
+[WorkerNode r3] Focused for Sun coord (-1.4, 5) after 17 rotations
+[WorkerNode r2] Invoked by neighbour `r3`
+[WorkerNode r2] Focused for Sun coord (-1.5, 5) after 16 rotations
+[WorkerNode r1] Invoked by neighbour `r2`
+[WorkerNode r1] Focused for Sun coord (-1.6, 5) after 7 rotations
+[WorkerNode r2] Invoked by neighbour `r1`
+[WorkerNode r2] Focused for Sun coord (-1.6, 5) after 16 rotations
+[WorkerNode r3] Invoked by neighbour `r2`
+[WorkerNode r3] Focused for Sun coord (-1.7, 5) after 13 rotations
+[WorkerNode r4] Invoked by neighbour `r3`
+[WorkerNode r4] Focused for Sun coord (-1.9, 5) after 15 rotations
+[WorkerNode r3] Invoked by neighbour `r4`
+[WorkerNode r3] Focused for Sun coord (-1.9, 5) after 17 rotations
+[WorkerNode r2] Invoked by neighbour `r3`
+[WorkerNode r2] Focused for Sun coord (-2.1, 5) after 17 rotations
+[WorkerNode r1] Invoked by neighbour `r2`
+[WorkerNode r1] Focused for Sun coord (-2.2, 5) after 16 rotations
+[SunNode] Terminated
+[FocusNode] Terminated
+[WorkerNode r1] Terminated
+[WorkerNode r2] Terminated
+[WorkerNode r3] Terminated
+[WorkerNode r4] Terminated
+
+\end{verbatim}
+
+\end{document}
+
